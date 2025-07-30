@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Column Signal Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .grid-container {
+            display: grid;
+            grid-template-columns: 1.5fr repeat(12, 1fr);
+        }
+        .new-signal { animation: flash 0.8s ease-out; }
+        @keyframes flash {
+            0% { background-color: rgba(255, 255, 255, 0.3); }
+            100% { background-color: transparent; }
+        }
+        .tooltip {
+            visibility: hidden; opacity: 0;
+            transition: opacity 0.2s, visibility 0.2s;
+            pointer-events: none;
+        }
+        .has-tooltip:hover .tooltip {
+            visibility: visible; opacity: 1;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-300 h-screen flex flex-col">
+
+
+    <main id="dashboard-grid" class="flex-grow overflow-auto p-2">
+    </main>
+
+    <script>
+        const gridContainer = document.getElementById('dashboard-grid');
+
+        const SIGNAL_KEYS = [
+            'long_buy_1', 'long_buy_2', 'long_sell_1', 'long_sell_2',
+            'mid_buy_1', 'mid_buy_2', 'mid_sell_1', 'mid_sell_2',
+            'short_buy_1', 'short_buy_2', 'short_sell_1', 'short_sell_2'
+        ];
+
+        function renderGrid(symbolOrder, state) {
+            gridContainer.innerHTML = '';
+            
+            const header = document.createElement('div');
+            header.className = 'grid-container text-xs font-semibold text-center text-gray-400 sticky top-0 bg-gray-900 z-10';
+            header.innerHTML = `
+                <div class="p-2 border-b border-r border-gray-700">Symbol</div>
+                <div class="p-2 border-b border-gray-700 col-span-4 bg-gray-800/50">Long Term</div>
+                <div class="p-2 border-b border-gray-700 col-span-4 bg-gray-800/40">Mid Term</div>
+                <div class="p-2 border-b border-gray-700 col-span-4 bg-gray-800/30">Short Term</div>
+                <div class="p-2 border-b border-r border-gray-700"></div>
+                <div class="p-2 border-b border-gray-700 col-span-2 text-green-500">Buy</div>
+                <div class="p-2 border-b border-gray-700 col-span-2 text-red-500">Sell</div>
+                <div class="p-2 border-b border-gray-700 col-span-2 text-green-500">Buy</div>
+                <div class="p-2 border-b border-gray-700 col-span-2 text-red-500">Sell</div>
+                <div class="p-2 border-b border-gray-700 col-span-2 text-green-500">Buy</div>
+                <div class="p-2 border-b border-gray-700 col-span-2 text-red-500">Sell</div>
+                <div class="p-2 border-b border-r border-gray-700"></div>
+                ${'<div class="p-2 border-b border-gray-700">Call 1</div><div class="p-2 border-b border-gray-700">Call 2</div>'.repeat(6)}
+            `;
+            gridContainer.appendChild(header);
+
+            symbolOrder.forEach(symbol => {
+                const row = document.createElement('div');
+                row.className = 'grid-container text-center';
+                let rowHTML = `<div class="p-2 border-b border-r border-gray-800 font-bold text-white text-sm flex items-center justify-center">${symbol}</div>`;
+                
+                SIGNAL_KEYS.forEach(key => {
+                    const signalData = state[symbol] ? state[symbol][key] : null;
+                    let cellContent = '';
+                    let cellClasses = 'p-2 border-b border-gray-800 text-xs transition-colors duration-500';
+
+                    if (signalData) {
+                        const isBuy = key.includes('buy');
+                        const colorClass = isBuy ? 'text-green-400' : 'text-red-400';
+                        const animationClass = signalData.isNew ? 'new-signal' : '';
+                        cellClasses += ` has-tooltip relative ${animationClass}`;
+                        const formattedTime = new Date(signalData.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                        cellContent = `
+                            <div class="${colorClass} font-semibold">${signalData.price}</div>
+                            <div class="tooltip absolute bottom-full mb-2 w-max px-3 py-1.5 bg-gray-800 text-white text-xs rounded-md shadow-lg z-20">
+                                Time: <span class="font-bold">${formattedTime}</span>
+                            </div>
+                        `;
+                    }
+                    rowHTML += `<div class="${cellClasses}">${cellContent}</div>`;
+                });
+                row.innerHTML = rowHTML;
+                gridContainer.appendChild(row);
+            });
+        }
+
+        function connectWebSocket() {
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+            const ws = new WebSocket(wsProtocol + window.location.host);
+
+            ws.onopen = () => console.log('WebSocket connection established.');
+            ws.onclose = () => {
+                console.log('WebSocket connection closed. Reconnecting...');
+                gridContainer.innerHTML = '<p class="text-center text-gray-500 mt-10">Reconnecting...</p>';
+                setTimeout(connectWebSocket, 3000);
+            };
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                ws.close();
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.state && data.symbolOrder) {
+                        renderGrid(data.symbolOrder, data.state);
+                    }
+                } catch (error) {
+                    console.error('Error processing message:', error);
+                }
+            };
+        }
+
+        connectWebSocket();
+    </script>
+</body>
+</html>
