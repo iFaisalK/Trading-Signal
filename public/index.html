@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Signal Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        font-family: "Inter", sans-serif;
+      }
+      .grid-container {
+        display: grid;
+        /* 8 columns: Symbol, Long(2), Short(4), Symbol */
+        grid-template-columns: 2fr 1.2fr 1.2fr 1.2fr 1.2fr 1.2fr 1.2fr 2fr;
+      }
+      /* Standard highlight for short-term signals */
+      .highlight-signal {
+        animation: highlight-fade 15s ease-out forwards;
+      }
+      @keyframes highlight-fade {
+        0% {
+          background-color: rgba(99, 102, 241, 0.5);
+        }
+        100% {
+          background-color: transparent;
+        }
+      }
+
+      /* New, more prominent flashing animation for long-term signals */
+      .long-term-highlight {
+        animation: long-term-flash 1s ease-out 3; /* Flash 3 times */
+      }
+      @keyframes long-term-flash {
+        0%,
+        100% {
+          background-color: transparent;
+        }
+        50% {
+          background-color: rgba(250, 204, 21, 0.6);
+        } /* Yellow flash */
+      }
+      .tooltip {
+        visibility: hidden;
+        opacity: 0;
+        transition: opacity 0.2s, visibility 0.2s;
+        pointer-events: none;
+      }
+      .has-tooltip:hover .tooltip {
+        visibility: visible;
+        opacity: 1;
+      }
+    </style>
+  </head>
+  <body class="bg-gray-900 text-gray-300 h-screen flex flex-col">
+    <main id="dashboard-grid" class="flex-grow overflow-auto p-2">
+      <!-- Grid will be dynamically generated here -->
+    </main>
+
+    <script>
+      const gridContainer = document.getElementById("dashboard-grid");
+
+      // --- FIX: Corrected the order of signal keys to match the grid layout ---
+      const SIGNAL_KEYS = [
+        "long_buy_1",
+        "long_sell_1",
+        "short_buy_2",
+        "short_sell_2",
+        "short_buy_3",
+        "short_sell_3",
+      ];
+
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      function playBeep(volume = 0.05, frequency = 880) {
+        if (audioCtx.state === "suspended") {
+          audioCtx.resume();
+        }
+        try {
+          const oscillator = audioCtx.createOscillator();
+          const gainNode = audioCtx.createGain();
+          oscillator.connect(gainNode);
+          gainNode.connect(audioCtx.destination);
+          oscillator.type = "sine";
+          oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+          gainNode.gain.setValueAtTime(volume, audioCtx.currentTime);
+          oscillator.start(audioCtx.currentTime);
+          oscillator.stop(audioCtx.currentTime + 0.15);
+        } catch (error) {
+          console.warn("Could not play beep sound.", error);
+        }
+      }
+      document.body.addEventListener(
+        "click",
+        () => {
+          if (audioCtx.state === "suspended") {
+            audioCtx.resume().then(() => console.log("AudioContext resumed."));
+          }
+        },
+        { once: true }
+      );
+
+      function renderGrid(symbolOrder, state) {
+        gridContainer.innerHTML = "";
+
+        const header = document.createElement("div");
+        header.className =
+          "grid-container text-xs font-semibold text-center text-gray-400 sticky top-0 bg-gray-900 z-10";
+        header.innerHTML = `
+                <div class="p-2 border-b border-r border-gray-700 row-span-3 flex items-center justify-center">Symbol Name</div>
+                <div class="p-2 border-b border-r border-gray-700 col-span-2 bg-gray-800/50">Long Term</div>
+                <div class="p-2 border-b border-r border-gray-700 col-span-4 bg-gray-800/30">Short Term</div>
+                <div class="p-2 border-b border-gray-700 row-span-3 flex items-center justify-center">Symbol Name</div>
+                <div class="p-2 border-b border-r border-gray-700 col-span-2">Call 1</div>
+                <div class="p-2 border-b border-r border-gray-700 col-span-2">Call 2 (M)</div>
+                <div class="p-2 border-b border-r border-gray-700 col-span-2">Call 3 (R)</div>
+                <div class="p-2 border-b border-r border-gray-700 text-green-500">Buy</div>
+                <div class="p-2 border-b border-r border-gray-700 text-red-500">Sell</div>
+                <div class="p-2 border-b border-gray-700 text-green-500">Buy</div>
+                <div class="p-2 border-b border-r border-gray-700 text-red-500">Sell</div>
+                <div class="p-2 border-b border-gray-700 text-green-500">Buy</div>
+                <div class="p-2 border-b border-r border-gray-700 text-red-500">Sell</div>
+            `;
+        gridContainer.appendChild(header);
+
+        symbolOrder.forEach((symbol, index) => {
+          const row = document.createElement("div");
+          const bgColorClass =
+            index % 2 === 0 ? "bg-gray-900/50" : "bg-gray-800/40";
+          row.className = `grid-container text-center ${bgColorClass}`;
+          let rowHTML = `<div class="p-2 border-b border-r border-gray-800 font-bold text-white text-sm flex items-center justify-start pl-4">${symbol}</div>`;
+
+          SIGNAL_KEYS.forEach((key, cellIndex) => {
+            const signalData = state[symbol] ? state[symbol][key] : null;
+            let cellContent = "";
+            const borderClass =
+              cellIndex === 1 || cellIndex === 3 || cellIndex === 5
+                ? "border-r"
+                : "";
+            let cellClasses = `p-2 border-b ${borderClass} border-gray-800 text-xs transition-colors duration-500`;
+
+            if (signalData) {
+              const isBuy = key.includes("buy");
+              const colorClass = isBuy ? "text-green-400" : "text-red-400";
+              const fontClass = "font-bold text-sm";
+              const formattedTime = new Date(
+                signalData.time
+              ).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+              const now = Date.now();
+              const isLongTerm = key.startsWith("long");
+              const animationDuration = isLongTerm ? 3000 : 15000;
+              const isStillNew =
+                signalData.newSince &&
+                now - signalData.newSince < animationDuration;
+              const animationClass = isStillNew
+                ? isLongTerm
+                  ? "long-term-highlight"
+                  : "highlight-signal"
+                : "";
+
+              cellClasses += ` has-tooltip relative ${animationClass}`;
+
+              cellContent = `
+                            <div class="${colorClass} ${fontClass}">${signalData.price}</div>
+                            <div class="tooltip absolute bottom-full mb-2 w-max px-3 py-1.5 bg-gray-800 text-white text-xs rounded-md shadow-lg z-20">
+                                Time: <span class="font-bold">${formattedTime}</span>
+                            </div>
+                        `;
+            }
+            rowHTML += `<div class="${cellClasses}">${cellContent}</div>`;
+          });
+          rowHTML += `<div class="p-2 border-b border-l border-gray-800 font-bold text-white text-sm flex items-center justify-end pr-4">${symbol}</div>`;
+          row.innerHTML = rowHTML;
+          gridContainer.appendChild(row);
+        });
+      }
+
+      function connectWebSocket() {
+        const wsProtocol =
+          window.location.protocol === "https:" ? "wss://" : "ws://";
+        const ws = new WebSocket(wsProtocol + window.location.host);
+
+        ws.onopen = () => console.log("WebSocket connection established.");
+        ws.onclose = () => {
+          console.log("WebSocket connection closed. Reconnecting...");
+          gridContainer.innerHTML =
+            '<p class="text-center text-gray-500 mt-10">Reconnecting...</p>';
+          setTimeout(connectWebSocket, 3000);
+        };
+        ws.onerror = (error) => {
+          console.error("WebSocket error:", error);
+          ws.close();
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.state && data.symbolOrder) {
+              let newSignalKey = null;
+              for (const symbol of data.symbolOrder) {
+                if (data.state[symbol]) {
+                  for (const key in data.state[symbol]) {
+                    const signalData = data.state[symbol][key];
+                    if (
+                      signalData &&
+                      signalData.newSince &&
+                      Date.now() - signalData.newSince < 3000
+                    ) {
+                      // Check if new in last 3s
+                      newSignalKey = key;
+                      break;
+                    }
+                  }
+                }
+                if (newSignalKey) break;
+              }
+
+              if (newSignalKey) {
+                if (newSignalKey.startsWith("long")) {
+                  playBeep(0.1, 440);
+                } else if (
+                  newSignalKey.includes("_buy_2") ||
+                  newSignalKey.includes("_sell_2")
+                ) {
+                  // Call 2 (M)
+                  playBeep(0.07, 660);
+                } else {
+                  // Call 3 (R)
+                  playBeep(0.04, 880);
+                }
+              }
+
+              renderGrid(data.symbolOrder, data.state);
+            }
+          } catch (error) {
+            console.error("Error processing message:", error);
+          }
+        };
+      }
+
+      connectWebSocket();
+    </script>
+  </body>
+</html>
