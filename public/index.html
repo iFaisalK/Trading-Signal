@@ -17,8 +17,10 @@
       }
       .grid-container {
         display: grid;
+        /* 8 columns: Symbol, Long(2), Short(4), Symbol */
         grid-template-columns: 2fr 1.2fr 1.2fr 1.2fr 1.2fr 1.2fr 1.2fr 2fr;
       }
+      /* Standard highlight for short-term signals */
       .highlight-signal {
         animation: highlight-fade 15s ease-out forwards;
       }
@@ -31,8 +33,9 @@
         }
       }
 
+      /* New, more prominent flashing animation for long-term signals */
       .long-term-highlight {
-        animation: long-term-flash 1s ease-out 3;
+        animation: long-term-flash 1s ease-out 3; /* Flash 3 times */
       }
       @keyframes long-term-flash {
         0%,
@@ -41,7 +44,7 @@
         }
         50% {
           background-color: rgba(250, 204, 21, 0.6);
-        }
+        } /* Yellow flash */
       }
       .tooltip {
         visibility: hidden;
@@ -59,9 +62,9 @@
     <main id="dashboard-grid" class="flex-grow overflow-auto p-2">
       </main>
 
-    <audio id="long-term-sound" src="/public/audio/long-term.mp3" preload="auto"></audio>
-    <audio id="call-2-sound" src="/public/audio/call-2.mp3" preload="auto"></audio>
-    <audio id="call-3-sound" src="/public/audio/call-3.mp3" preload="auto"></audio>
+    <audio id="long-term-sound" src="/long-term.mp3" preload="auto"></audio>
+    <audio id="call-2-sound" src="/call-2.mp3" preload="auto"></audio>
+    <audio id="call-3-sound" src="/call-3.mp3" preload="auto"></audio>
 
     <script>
       const gridContainer = document.getElementById("dashboard-grid");
@@ -75,26 +78,42 @@
         "short_sell_3",
       ];
       
-      // NEW: A function to play sounds from the audio elements
       function playSound(soundId) {
-        // A user interaction (like a click) is needed for audio to play in modern browsers.
-        // The click listener below handles this.
         const sound = document.getElementById(soundId);
         if (sound) {
-            sound.currentTime = 0; // Rewind to the start in case it's played again quickly
+            sound.currentTime = 0;
             sound.play().catch(error => console.error(`Could not play sound ${soundId}:`, error));
         }
       }
 
-      // This listener is important. Browsers block audio until the user interacts with the page.
       document.body.addEventListener(
         "click",
         () => {
-          // This just "unlocks" the audio context.
           console.log("Audio unlocked by user interaction.");
         },
         { once: true }
       );
+
+      // NEW: Helper function to get the relative date string
+      function getRelativeDateString(date) {
+        const today = new Date();
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        today.setHours(0, 0, 0, 0);
+        yesterday.setHours(0, 0, 0, 0);
+        date.setHours(0, 0, 0, 0);
+
+        if (date.getTime() === today.getTime()) {
+          return "Today";
+        }
+        if (date.getTime() === yesterday.getTime()) {
+          return "Yesterday";
+        }
+        return date.toLocaleDateString(undefined, {
+          weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+        });
+      }
 
       function renderGrid(symbolOrder, state) {
         gridContainer.innerHTML = "";
@@ -115,11 +134,39 @@
                 <div class="p-2 border-b border-r border-gray-700 text-green-500">Buy</div>
                 <div class="p-2 border-b border-r border-gray-700 text-red-500">Sell</div>
                 <div class="p-2 border-b border-r border-gray-700 text-green-500">Buy</div>
-                <div class="p-2 border-b border-gray-700 text-red-500">Sell</div>
+                <div class="p-2 border-b border-r border-gray-700 text-red-500">Sell</div>
             `;
         gridContainer.appendChild(header);
 
+        let lastDateString = null;
+
         symbolOrder.forEach((symbol, index) => {
+          const symbolState = state[symbol];
+          let mostRecentSignal = null;
+          if (symbolState) {
+            mostRecentSignal = Object.values(symbolState).reduce((latest, signal) => {
+              if (!signal) return latest;
+              if (!latest || new Date(signal.time) > new Date(latest.time)) {
+                return signal;
+              }
+              return latest;
+            }, null);
+          }
+
+          if (mostRecentSignal) {
+            const signalDate = new Date(mostRecentSignal.time);
+            const dateString = getRelativeDateString(signalDate);
+
+            if (dateString !== lastDateString) {
+              const dateSeparator = document.createElement('div');
+              // Subtle styling to match the application's tone
+              dateSeparator.className = 'col-span-8 text-center text-sm font-medium text-gray-400 py-2 my-1 flex items-center';
+              dateSeparator.innerHTML = `<hr class="flex-grow border-gray-700"><span class="px-4">${dateString}</span><hr class="flex-grow border-gray-700">`;
+              gridContainer.appendChild(dateSeparator);
+              lastDateString = dateString;
+            }
+          }
+
           const row = document.createElement("div");
           const bgColorClass =
             index % 2 === 0 ? "bg-gray-900/50" : "bg-gray-800/40";
@@ -211,7 +258,6 @@
                 if (newSignalKey) break;
               }
 
-              // UPDATED: Replaced playBeep with playSound for your custom MP3s
               if (newSignalKey) {
                 if (newSignalKey.startsWith("long")) {
                   playSound('long-term-sound');
@@ -219,10 +265,8 @@
                   newSignalKey.includes("_buy_2") ||
                   newSignalKey.includes("_sell_2")
                 ) {
-                  // Call 2 (M)
                   playSound('call-2-sound');
                 } else {
-                  // Call 3 (R)
                   playSound('call-3-sound');
                 }
               }
