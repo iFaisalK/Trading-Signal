@@ -17,10 +17,8 @@
       }
       .grid-container {
         display: grid;
-        /* 8 columns: Symbol, Long(2), Short(4), Symbol */
         grid-template-columns: 2fr 1.2fr 1.2fr 1.2fr 1.2fr 1.2fr 1.2fr 2fr;
       }
-      /* Standard highlight for short-term signals */
       .highlight-signal {
         animation: highlight-fade 15s ease-out forwards;
       }
@@ -32,10 +30,8 @@
           background-color: transparent;
         }
       }
-
-      /* New, more prominent flashing animation for long-term signals */
       .long-term-highlight {
-        animation: long-term-flash 1s ease-out 3; /* Flash 3 times */
+        animation: long-term-flash 1s ease-out 3;
       }
       @keyframes long-term-flash {
         0%,
@@ -44,7 +40,7 @@
         }
         50% {
           background-color: rgba(250, 204, 21, 0.6);
-        } /* Yellow flash */
+        }
       }
       .tooltip {
         visibility: hidden;
@@ -60,11 +56,12 @@
   </head>
   <body class="bg-gray-900 text-gray-300 h-screen flex flex-col">
     <main id="dashboard-grid" class="flex-grow overflow-auto p-2">
-      </main>
+      <!-- Grid will be dynamically generated here -->
+    </main>
 
-    <audio id="long-term-sound" src="/long-term.mp3" preload="auto"></audio>
-    <audio id="call-2-sound" src="/call-2.mp3" preload="auto"></audio>
-    <audio id="call-3-sound" src="/call-3.mp3" preload="auto"></audio>
+    <audio id="long-term-sound" src="/audio/long-term.mp3" preload="auto"></audio>
+    <audio id="call-2-sound" src="/audio/call-2.mp3" preload="auto"></audio>
+    <audio id="call-3-sound" src="/audio/call-3.mp3" preload="auto"></audio>
 
     <script>
       const gridContainer = document.getElementById("dashboard-grid");
@@ -94,7 +91,6 @@
         { once: true }
       );
 
-      // NEW: Helper function to get the relative date string
       function getRelativeDateString(date) {
         const today = new Date();
         const yesterday = new Date();
@@ -134,14 +130,18 @@
                 <div class="p-2 border-b border-r border-gray-700 text-green-500">Buy</div>
                 <div class="p-2 border-b border-r border-gray-700 text-red-500">Sell</div>
                 <div class="p-2 border-b border-r border-gray-700 text-green-500">Buy</div>
-                <div class="p-2 border-b border-r border-gray-700 text-red-500">Sell</div>
+                <div class="p-2 border-b border-gray-700 text-red-500">Sell</div>
             `;
         gridContainer.appendChild(header);
 
         let lastDateString = null;
 
-        symbolOrder.forEach((symbol, index) => {
-          const symbolState = state[symbol];
+        symbolOrder.forEach((symbolDateKey, index) => {
+          // ** THIS IS THE FIX **
+          // The key now includes the date (e.g., "TCS-2025-08-05"), so we split it to get the symbol name.
+          const symbol = symbolDateKey.split('-')[0]; 
+          const symbolState = state[symbolDateKey];
+          
           let mostRecentSignal = null;
           if (symbolState) {
             mostRecentSignal = Object.values(symbolState).reduce((latest, signal) => {
@@ -158,11 +158,12 @@
             const dateString = getRelativeDateString(signalDate);
 
             if (dateString !== lastDateString) {
-              const dateSeparator = document.createElement('div');
-              // Subtle styling to match the application's tone
-              dateSeparator.className = 'col-span-8 text-center text-sm font-medium text-gray-400 py-2 my-1 flex items-center';
-              dateSeparator.innerHTML = `<hr class="flex-grow border-gray-700"><span class="px-4">${dateString}</span><hr class="flex-grow border-gray-700">`;
-              gridContainer.appendChild(dateSeparator);
+              if (dateString !== "Today") {
+                  const dateSeparator = document.createElement('div');
+                  dateSeparator.className = 'col-span-8 text-center text-sm font-medium text-gray-400 py-2 my-1 flex items-center';
+                  dateSeparator.innerHTML = `<hr class="flex-grow border-gray-700"><span class="px-4">${dateString}</span><hr class="flex-grow border-gray-700">`;
+                  gridContainer.appendChild(dateSeparator);
+              }
               lastDateString = dateString;
             }
           }
@@ -171,10 +172,11 @@
           const bgColorClass =
             index % 2 === 0 ? "bg-gray-900/50" : "bg-gray-800/40";
           row.className = `grid-container text-center ${bgColorClass}`;
+          // Use the extracted symbol name for display
           let rowHTML = `<div class="p-2 border-b border-r border-gray-800 font-bold text-white text-sm flex items-center justify-start pl-4">${symbol}</div>`;
 
           SIGNAL_KEYS.forEach((key, cellIndex) => {
-            const signalData = state[symbol] ? state[symbol][key] : null;
+            const signalData = state[symbolDateKey] ? state[symbolDateKey][key] : null;
             let cellContent = "";
             const borderClass =
               cellIndex === 1 || cellIndex === 3 || cellIndex === 5
@@ -213,6 +215,7 @@
             }
             rowHTML += `<div class="${cellClasses}">${cellContent}</div>`;
           });
+          // Use the extracted symbol name for display
           rowHTML += `<div class="p-2 border-b border-l border-gray-800 font-bold text-white text-sm flex items-center justify-end pr-4">${symbol}</div>`;
           row.innerHTML = rowHTML;
           gridContainer.appendChild(row);
@@ -241,10 +244,11 @@
             const data = JSON.parse(event.data);
             if (data.state && data.symbolOrder) {
               let newSignalKey = null;
-              for (const symbol of data.symbolOrder) {
-                if (data.state[symbol]) {
-                  for (const key in data.state[symbol]) {
-                    const signalData = data.state[symbol][key];
+              // Find the key of the most recent signal for audio notification
+              const mostRecentSymbolDateKey = data.symbolOrder[0];
+              if(data.state[mostRecentSymbolDateKey]){
+                  for (const key in data.state[mostRecentSymbolDateKey]) {
+                    const signalData = data.state[mostRecentSymbolDateKey][key];
                     if (
                       signalData &&
                       signalData.newSince &&
@@ -254,8 +258,6 @@
                       break;
                     }
                   }
-                }
-                if (newSignalKey) break;
               }
 
               if (newSignalKey) {
