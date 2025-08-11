@@ -17,10 +17,8 @@
       }
       .grid-container {
         display: grid;
-        /* 8 columns: Symbol, Long(2), Short(4), Symbol */
         grid-template-columns: 2fr 1.2fr 1.2fr 1.2fr 1.2fr 1.2fr 1.2fr 2fr;
       }
-      /* Standard highlight for short-term signals */
       .highlight-signal {
         animation: highlight-fade 15s ease-out forwards;
       }
@@ -33,9 +31,8 @@
         }
       }
 
-      /* New, more prominent flashing animation for long-term signals */
       .long-term-highlight {
-        animation: long-term-flash 1s ease-out 3; /* Flash 3 times */
+        animation: long-term-flash 1s ease-out 3;
       }
       @keyframes long-term-flash {
         0%,
@@ -44,7 +41,7 @@
         }
         50% {
           background-color: rgba(250, 204, 21, 0.6);
-        } /* Yellow flash */
+        }
       }
       .tooltip {
         visibility: hidden;
@@ -60,13 +57,15 @@
   </head>
   <body class="bg-gray-900 text-gray-300 h-screen flex flex-col">
     <main id="dashboard-grid" class="flex-grow overflow-auto p-2">
-      <!-- Grid will be dynamically generated here -->
-    </main>
+      </main>
+
+    <audio id="long-term-sound" src="/public/audio/long-term.mp3" preload="auto"></audio>
+    <audio id="call-2-sound" src="/public/audio/call-2.mp3" preload="auto"></audio>
+    <audio id="call-3-sound" src="/public/audio/call-3.mp3" preload="auto"></audio>
 
     <script>
       const gridContainer = document.getElementById("dashboard-grid");
 
-      // --- FIX: Corrected the order of signal keys to match the grid layout ---
       const SIGNAL_KEYS = [
         "long_buy_1",
         "long_sell_1",
@@ -75,32 +74,24 @@
         "short_buy_3",
         "short_sell_3",
       ];
-
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      function playBeep(volume = 0.05, frequency = 880) {
-        if (audioCtx.state === "suspended") {
-          audioCtx.resume();
-        }
-        try {
-          const oscillator = audioCtx.createOscillator();
-          const gainNode = audioCtx.createGain();
-          oscillator.connect(gainNode);
-          gainNode.connect(audioCtx.destination);
-          oscillator.type = "sine";
-          oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
-          gainNode.gain.setValueAtTime(volume, audioCtx.currentTime);
-          oscillator.start(audioCtx.currentTime);
-          oscillator.stop(audioCtx.currentTime + 0.15);
-        } catch (error) {
-          console.warn("Could not play beep sound.", error);
+      
+      // NEW: A function to play sounds from the audio elements
+      function playSound(soundId) {
+        // A user interaction (like a click) is needed for audio to play in modern browsers.
+        // The click listener below handles this.
+        const sound = document.getElementById(soundId);
+        if (sound) {
+            sound.currentTime = 0; // Rewind to the start in case it's played again quickly
+            sound.play().catch(error => console.error(`Could not play sound ${soundId}:`, error));
         }
       }
+
+      // This listener is important. Browsers block audio until the user interacts with the page.
       document.body.addEventListener(
         "click",
         () => {
-          if (audioCtx.state === "suspended") {
-            audioCtx.resume().then(() => console.log("AudioContext resumed."));
-          }
+          // This just "unlocks" the audio context.
+          console.log("Audio unlocked by user interaction.");
         },
         { once: true }
       );
@@ -121,10 +112,10 @@
                 <div class="p-2 border-b border-r border-gray-700 col-span-2">Call 3 (R)</div>
                 <div class="p-2 border-b border-r border-gray-700 text-green-500">Buy</div>
                 <div class="p-2 border-b border-r border-gray-700 text-red-500">Sell</div>
-                <div class="p-2 border-b border-gray-700 text-green-500">Buy</div>
+                <div class="p-2 border-b border-r border-gray-700 text-green-500">Buy</div>
                 <div class="p-2 border-b border-r border-gray-700 text-red-500">Sell</div>
-                <div class="p-2 border-b border-gray-700 text-green-500">Buy</div>
-                <div class="p-2 border-b border-r border-gray-700 text-red-500">Sell</div>
+                <div class="p-2 border-b border-r border-gray-700 text-green-500">Buy</div>
+                <div class="p-2 border-b border-gray-700 text-red-500">Sell</div>
             `;
         gridContainer.appendChild(header);
 
@@ -212,7 +203,6 @@
                       signalData.newSince &&
                       Date.now() - signalData.newSince < 3000
                     ) {
-                      // Check if new in last 3s
                       newSignalKey = key;
                       break;
                     }
@@ -221,18 +211,19 @@
                 if (newSignalKey) break;
               }
 
+              // UPDATED: Replaced playBeep with playSound for your custom MP3s
               if (newSignalKey) {
                 if (newSignalKey.startsWith("long")) {
-                  playBeep(0.1, 440);
+                  playSound('long-term-sound');
                 } else if (
                   newSignalKey.includes("_buy_2") ||
                   newSignalKey.includes("_sell_2")
                 ) {
                   // Call 2 (M)
-                  playBeep(0.07, 660);
+                  playSound('call-2-sound');
                 } else {
                   // Call 3 (R)
-                  playBeep(0.04, 880);
+                  playSound('call-3-sound');
                 }
               }
 
